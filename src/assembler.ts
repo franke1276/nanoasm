@@ -88,6 +88,7 @@ export class Assembler {
   asmlines : AssemblerLine[] = [];
   fixups : AssemblerFixup[] = [];
   width = 8;
+  bigendian = true;
   codelen = 0;
   aborted = false;
   
@@ -212,6 +213,7 @@ export class Assembler {
       } else {
         // it's an indexed variable, look up its variable
         var id = m[b+1];
+        //console.log(" id: " + id);
         var v = this.spec.vars[rule.varlist[b]];
         if (!v) {
           return {error:"Could not find matching identifier for '" + m[0] + "'"};
@@ -220,9 +222,11 @@ export class Assembler {
         // is it an enumerated type? look up the index of its keyword
         if (v.toks) {
           x = v.toks.indexOf(id);
+          
           if (x < 0)
             return {error:"Can't use '" + id + "' here, only one of: " + v.toks.join(', ')};
         } else {
+          
           // otherwise, parse it as a constant
           x = this.parseConst(id, n);
           // is it a label? add fixup
@@ -269,6 +273,10 @@ export class Assembler {
       this.codelen = parseInt(tokens[1]);
     else if (cmd == '.width')
       this.width = parseInt(tokens[1]);
+    else if (cmd == '.bigendian')
+      this.bigendian = true;
+    else if (cmd == '.littleendian')
+      this.bigendian = false;  
     else if (cmd == '.arch')
       this.fatalIf(this.loadArch(tokens[1]));
     else if (cmd == '.include')
@@ -339,8 +347,15 @@ export class Assembler {
           this.warning("Symbol " + fix.sym + " (" + value + ") does not fit in " + fix.bitlen + " bits", fix.line);
         value &= mask;
         // TODO: check range
-        // TODO: span multiple words?
-        this.outwords[ofs - this.origin] ^= value; // TODO: << shift?
+        
+        var nb = fix.bitlen/this.width;
+        for (var k=0; k<nb; k++) {   
+          let d: number = k;
+          if (this.bigendian) {
+            d = nb-1-k;
+          }
+          this.outwords[ofs + k - this.origin] ^= (value >> (d)*this.width) & ((1<<this.width)-1);
+        }
       } else {
         this.warning("Symbol '" + fix.sym + "' not found");
       }
